@@ -134,62 +134,14 @@ echo "
 [Interface]
 Address = $(echo "$wireguard_json" | jq -r '.peer_ip')
 PrivateKey = $privKey
+PostUp = DROUTE=\$(ip route | grep default | awk '{print \$3}'); HOMENET=192.168.0.0/16; ip route add \$HOMENET via \$DROUTE;iptables -I OUTPUT -d \$HOMENET -j ACCEPT; iptables -A OUTPUT ! -o %i -m mark ! --mark \$(wg show %i fwmark) -m addrtype ! --dst-type LOCAL -j REJECT
+PreDown = HOMENET=192.168.0.0/16; ip route delete \$HOMENET; iptables -D OUTPUT ! -o %i -m mark ! --mark \$(wg show %i fwmark) -m addrtype ! --dst-type LOCAL -j REJECT; iptables -D OUTPUT -d \$HOMENET -j ACCEPT
 $dnsSettingForVPN
 [Peer]
 PersistentKeepalive = 25
 PublicKey = $(echo "$wireguard_json" | jq -r '.server_key')
 AllowedIPs = 0.0.0.0/0
 Endpoint = ${WG_SERVER_IP}:$(echo "$wireguard_json" | jq -r '.server_port')
-" > /etc/wireguard/pia.conf || exit 1
+" > /config/wg0.conf || exit 1
 echo -e ${GREEN}OK!${NC}
 
-# Start the WireGuard interface.
-# If something failed, stop this script.
-# If you get DNS errors because you miss some packages,
-# just hardcode /etc/resolv.conf to "nameserver 10.0.0.242".
-echo
-echo Trying to create the wireguard interface...
-wg-quick up pia || exit 1
-echo
-echo -e "${GREEN}The WireGuard interface got created.${NC}
-
-At this point, internet should work via VPN.
-
-To disconnect the VPN, run:
-
---> ${GREEN}wg-quick down pia${NC} <--
-"
-
-# This section will stop the script if PIA_PF is not set to "true".
-if [ "$PIA_PF" != true ]; then
-  echo If you want to also enable port forwarding, you can start the script:
-  echo -e $ ${GREEN}PIA_TOKEN=$PIA_TOKEN \
-    PF_GATEWAY=$WG_SERVER_IP \
-    PF_HOSTNAME=$WG_HOSTNAME \
-    ./port_forwarding.sh${NC}
-  echo
-  echo The location used must be port forwarding enabled, or this will fail.
-  echo Calling the ./get_region script with PIA_PF=true will provide a filtered list.
-  exit 1
-fi
-
-echo -ne "This script got started with ${GREEN}PIA_PF=true${NC}.
-
-Starting port forwarding in "
-for i in {5..1}; do
-  echo -n "$i..."
-  sleep 1
-done
-echo
-echo
-
-echo -e "Starting procedure to enable port forwarding by running the following command:
-$ ${GREEN}PIA_TOKEN=$PIA_TOKEN \\
-  PF_GATEWAY=$WG_SERVER_IP \\
-  PF_HOSTNAME=$WG_HOSTNAME \\
-  ./port_forwarding.sh${NC}"
-
-PIA_TOKEN=$PIA_TOKEN \
-  PF_GATEWAY=$WG_SERVER_IP \
-  PF_HOSTNAME=$WG_HOSTNAME \
-  ./port_forwarding.sh
